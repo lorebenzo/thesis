@@ -1,0 +1,15 @@
+{
+    "optimizer": {
+        "type": "adam",
+        "lr": 0.001,
+        "weight_decay": 1e-5
+    },
+    "scheduler": {
+        "type": "plateau",
+        "factor": 0.1,
+        "patience": 10
+    },
+    "early_stopping": {
+        "patience": 20
+    }
+}
