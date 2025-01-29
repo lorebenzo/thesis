@@ -1,29 +1,25 @@
-from pathlib import Path
+from matplotlib import pyplot as plt
 
-import typer
-from loguru import logger
-from tqdm import tqdm
-
-from src.config import FIGURES_DIR, PROCESSED_DATA_DIR
-
-app = typer.Typer()
-
-
-@app.command()
-def main(
-    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
-    input_path: Path = PROCESSED_DATA_DIR / "dataset.csv",
-    output_path: Path = FIGURES_DIR / "plot.png",
-    # -----------------------------------------
-):
-    # ---- REPLACE THIS WITH YOUR OWN CODE ----
-    logger.info("Generating plot from data...")
-    for i in tqdm(range(10), total=10):
-        if i == 5:
-            logger.info("Something happened for iteration 5.")
-    logger.success("Plot generation complete.")
-    # -----------------------------------------
-
-
-if __name__ == "__main__":
-    app()
+def plot_two_images(image1, image2, title1, title2, cmap1='hot', cmap2='hot'):
+    fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+    ax[0].imshow(image1, cmap=cmap1)
+    ax[0].set_title(title1)
+    ax[0].axis('off')
+    ax[1].imshow(image2, cmap=cmap2)
+    ax[1].set_title(title2)
+    ax[1].axis('off')
+    plt.show()
+    
+    
+def plot_three_images(image1, image2, image3, title1, title2, title3, cmap1='hot', cmap2='hot', cmap3='hot'):
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    ax[0].imshow(image1, cmap=cmap1)
+    ax[0].set_title(title1)
+    ax[0].axis('off')
+    ax[1].imshow(image2, cmap=cmap2)
+    ax[1].set_title(title2)
+    ax[1].axis('off')
+    ax[2].imshow(image3, cmap=cmap3)
+    ax[2].set_title(title3)
+    ax[2].axis('off')
+    plt.show()
