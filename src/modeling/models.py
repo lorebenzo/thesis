@@ -10,7 +10,6 @@ import torch.nn as nn
 
 shape = (200, 200)
 
-
 class ConvAutoEncoder(nn.Module):
     def __init__(self, latent_dim, shape):
         super(ConvAutoEncoder, self).__init__()
@@ -72,7 +71,6 @@ class ConvAutoEncoder(nn.Module):
 
     def forward(self, x):
         # Assuming input shape: (batch_size, sequence_length, 1, 100, 100) for 100x100 images
-
         batch_size, _, _ = x.size()
 
         # Encode each time step separately
@@ -169,7 +167,7 @@ class EncoderRNN(nn.Module):
     def forward(self, input):
         input = self.dropout(input)
         output, (hidden, cell) = self.lstm(input)
-        
+
         return output, (hidden, cell)
 
 class BahdanauAttention(nn.Module):
@@ -201,7 +199,7 @@ class AttnDecoderRNN(nn.Module):
         decoder_outputs = []
         attentions = []
 
-        for i in range(80):
+        for i in range(20):
             decoder_input = decoder_inputs[:, i].unsqueeze(1)
             decoder_output, decoder_hidden, attn_weights = self.forward_step(
                 decoder_input, decoder_hidden, encoder_outputs
@@ -218,7 +216,7 @@ class AttnDecoderRNN(nn.Module):
     def forward_step(self, input, hidden, encoder_outputs):
         query = hidden[0].permute(1, 0, 2)
         query = self.dropout(query)
-        
+
         context, attn_weights = self.attention(query, encoder_outputs)
         input_lstm = torch.cat((input, context), dim=2)
 
@@ -239,12 +237,12 @@ class LitSeq2SeqModel(L.LightningModule):
         y_coarse = y[1] # only use the low fidelity data as input to the decoder
         encoder_outputs, encoder_hidden = self.encoder(encoder_input)
         decoder_outputs, _, attentions = self.decoder(encoder_outputs, encoder_hidden, y_coarse)
-        
+
         return decoder_outputs, attentions
 
     def training_step(self, batch, _):
         Z, y = batch
-        
+
         decoder_outputs, attentions = self(Z, y)
 
         loss = F.mse_loss(decoder_outputs, y[0])
@@ -254,7 +252,7 @@ class LitSeq2SeqModel(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         Z, y = batch
-                
+
         decoder_outputs, attentions = self(Z, y)
 
         loss = F.mse_loss(decoder_outputs, y[0])

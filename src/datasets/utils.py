@@ -4,12 +4,13 @@ import torch
 import torch.nn.functional as F
 from typing import Tuple
 from pathlib import Path
+import vtk
 
 from torch.utils.data import DataLoader
 
 from src.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
 from .dataset import (
-    SequenceDatasetMultiFidelity, 
+    SequenceDatasetMultiFidelity,
     AutoEncoderDataset
 )
 
@@ -124,7 +125,7 @@ def load_multi_fidelity_dataset_manual_coarsed(
         burning_data = burning_data[:, slice_time_steps[0] : slice_time_steps[1]]
         coarse_burning_data = coarse_burning_data[:, slice_time_steps[0] : slice_time_steps[1]]
     winds = data["winds"]
-    
+
     # Extract only the first wind value
     map_wind = lambda x: x[0, 0]
     winds = np.array(list(map(map_wind, winds)))
@@ -271,3 +272,80 @@ def load_autoencoder_data(
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=shuffle)
 
     return train_dataloader, val_dataloader, test_dataloader
+
+from vtk.util import numpy_support
+
+
+def vtk_to_numpy(
+        starting_timestep: int = 20,
+        ending_timestep: int = 8020,
+        timestep_interval: int = 20,
+        number_of_files: int = 50,
+        folder_path: str = "",
+        verbose: bool = False,
+        numpy_output_folder: str = "",
+        shape: tuple = (100, 100)
+):
+    timesteps = range(starting_timestep, ending_timestep + timestep_interval, timestep_interval)
+    reader = vtk.vtkStructuredPointsReader()
+    files = range(0, number_of_files)
+    burning_data = []
+
+    burning_data = []
+    for j in files:
+        if verbose:
+            print("Managing file", j)
+        b_data = []
+        for i in timesteps:
+            reader.SetFileName(f"{folder_path}/sim{j}/VTK/Solution.vtk.{i}")
+            reader.Update()
+            data = reader.GetOutput()
+            point_data = data.GetPointData()
+            point_data_arrays = []
+            for i in range(point_data.GetNumberOfArrays()):
+                point_data_arrays.append(numpy_support.vtk_to_numpy(point_data.GetArray(i)))
+            point_data_arrays = np.array(point_data_arrays)
+            point_data_arrays = np.reshape(point_data_arrays, shape)
+            b_data.append(point_data_arrays)
+        burning_data.append(b_data)
+
+    elevations = []
+    for j in files:
+        reader = vtk.vtkStructuredPointsReader()
+        reader.SetFileName(f"{folder_path}/sim{j}/VTK/Elevation.vtk")
+        reader.Update()
+
+        data = reader.GetOutput()
+        point_data = data.GetPointData()
+        for i in range(point_data.GetNumberOfArrays()):
+            elevation = numpy_support.vtk_to_numpy(point_data.GetArray(0))
+        elevation = np.reshape(elevation, shape)
+        elevations.append(elevation)
+
+    # import wind vtk data
+    winds = []
+    for j in files:
+        reader = vtk.vtkStructuredPointsReader()
+        reader.SetFileName(f"{folder_path}/sim{j}/VTK/Wind.vtk")
+        reader.Update()
+
+        data = reader.GetOutput()
+        point_data = data.GetPointData()
+        wind = numpy_support.vtk_to_numpy(point_data.GetArray(0))
+        wind = wind.reshape(*shape, 3)
+        winds.append(wind)
+
+    # import landuse vtk data
+    landuses = []
+    for j in files:
+        reader = vtk.vtkStructuredPointsReader()
+        reader.SetFileName(f"{folder_path}/sim{j}/VTK/Landuse.vtk")
+        reader.Update()
+
+        data = reader.GetOutput()
+        point_data = data.GetPointData()
+        landuse = numpy_support.vtk_to_numpy(point_data.GetArray(0))
+        landuse = landuse.reshape(shape)
+        landuses.append(landuse)
+
+    np.savez(numpy_output_folder, burning_data=burning_data, elevations=elevations, winds=winds, landuses=landuses)
