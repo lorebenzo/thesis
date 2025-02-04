@@ -199,7 +199,7 @@ class AttnDecoderRNN(nn.Module):
         decoder_outputs = []
         attentions = []
 
-        for i in range(20):
+        for i in range(decoder_inputs.shape[1]):
             decoder_input = decoder_inputs[:, i].unsqueeze(1)
             decoder_output, decoder_hidden, attn_weights = self.forward_step(
                 decoder_input, decoder_hidden, encoder_outputs

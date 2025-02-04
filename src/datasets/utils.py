@@ -113,6 +113,7 @@ def load_multi_fidelity_dataset_manual_coarsed(
     input_len: int = 40,
     output_len: int = 40,
     hop: int = 0,
+    real_coarse_data: bool = False
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
 
     torch.manual_seed(seed)
@@ -120,7 +121,10 @@ def load_multi_fidelity_dataset_manual_coarsed(
     coarse_data = np.load(coarse_data_dir)
 
     burning_data = data["burning_data"]
-    coarse_burning_data = coarse_data["coarse_data"]
+    if real_coarse_data:
+        coarse_burning_data = coarse_data["burning_data"]
+    else:
+        coarse_burning_data = coarse_data["coarse_data"]
     if slice_time_steps:
         burning_data = burning_data[:, slice_time_steps[0] : slice_time_steps[1]]
         coarse_burning_data = coarse_burning_data[:, slice_time_steps[0] : slice_time_steps[1]]
