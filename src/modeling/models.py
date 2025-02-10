@@ -9,151 +9,173 @@ import torch
 import torch.nn as nn
 
 shape = (200, 200)
-
 class ConvAutoEncoder(nn.Module):
-    def __init__(self, latent_dim, shape):
+    def __init__(self, latent_dim, input_shape, n_encoder_layers=4, channels_base=16, dropout=0.5):
         super(ConvAutoEncoder, self).__init__()
-        self.__version__ = "v1.0.0"
-        self.shape = shape
+        self.__version__ = "v1.0.1"
+        self.input_shape = input_shape  # (height, width)
+        self.n_encoder_layers = n_encoder_layers
+        self.channels_base = channels_base
 
-        # CNN Encoder
-        self.encoder = nn.Sequential(
-            nn.Conv2d(
-                1, 16, kernel_size=3, stride=2, padding=1
-            ),  # Output: (batch_size, 16, 50, 50)
-            nn.BatchNorm2d(16),
-            nn.LeakyReLU(True),
-            nn.Dropout2d(0.5),
-            nn.Conv2d(
-                16, 32, kernel_size=3, stride=2, padding=1
-            ),  # Output: (batch_size, 32, 25, 25)
-            nn.BatchNorm2d(32),
-            nn.LeakyReLU(True),
-            nn.Dropout2d(0.5),
-            nn.Conv2d(
-                32, 64, kernel_size=3, stride=2, padding=1
-            ),  # Output: (batch_size, 64, 13, 13)
-            nn.BatchNorm2d(64),
-            nn.LeakyReLU(True),
-            nn.Dropout2d(0.5),
-            nn.Conv2d(
-                64, 128, kernel_size=3, stride=2, padding=1
-            ),  # Output: (batch_size, 128, 7, 7)
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(True),
-        )
+        # Build encoder and track spatial dimensions
+        self.encoder, self.encoder_shapes = self._build_encoder(dropout)
 
-        # Flatten for FC layers
-        self.flatten = nn.Flatten()
+        # Calculate flattened size after encoder
+        last_channels, last_height, last_width = self.encoder_shapes[-1]
+        self.flattened_size = last_channels * last_height * last_width
 
-        # FC Layers
+        # Latent space layers
         self.fc_enc = nn.Sequential(
-            nn.Linear(128 * 13 * 13, latent_dim),
+            nn.Linear(self.flattened_size, latent_dim),
+            nn.LeakyReLU(True),
+        )
+        self.fc_dec = nn.Sequential(
+            nn.Linear(latent_dim, self.flattened_size),
             nn.LeakyReLU(True),
         )
 
-        self.fc_dec = nn.Sequential(nn.Linear(latent_dim, 128 * 13 * 13), nn.LeakyReLU(True))
+        # Build decoder
+        self.decoder = self._build_decoder(dropout)
 
-        # CNN Decoder
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=0),
-            nn.LeakyReLU(True),
-            nn.Dropout2d(0.5),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.LeakyReLU(True),
-            nn.Dropout2d(0.5),
-            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.LeakyReLU(True),
-            nn.Dropout2d(0.5),
-            nn.ConvTranspose2d(16, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.Sigmoid(),
-        )
+    def _build_encoder(self, dropout):
+        layers = []
+        current_channels = 1  # Input channels
+        current_height, current_width = self.input_shape
+        shapes = [(current_channels, current_height, current_width)]
+
+        for layer_idx in range(self.n_encoder_layers):
+            out_channels = self.channels_base * (2 ** layer_idx)
+
+            conv_block = [
+                nn.Conv2d(current_channels, out_channels, kernel_size=3, stride=2, padding=1),
+                nn.BatchNorm2d(out_channels),
+                nn.LeakyReLU(True)
+            ]
+
+            # Add dropout to all layers except last
+            if layer_idx != self.n_encoder_layers - 1:
+                conv_block.append(nn.Dropout2d(dropout))
+
+            layers.extend(conv_block)
+
+            # Update spatial dimensions
+            current_height = (current_height + 2*1 - 3) // 2 + 1
+            current_width = (current_width + 2*1 - 3) // 2 + 1
+            current_channels = out_channels
+            shapes.append((current_channels, current_height, current_width))
+
+        return nn.Sequential(*layers), shapes
+
+    def _build_decoder(self, dropout):
+        layers = []
+        decoder_shapes = self.encoder_shapes[::-1][:-1]  # Reverse and exclude input shape
+
+        current_channels, current_h, current_w = decoder_shapes[0]
+
+        for layer_idx in range(self.n_encoder_layers):
+            # Determine target shape
+            if layer_idx < self.n_encoder_layers - 1:
+                next_channels, target_h, target_w = decoder_shapes[layer_idx+1]
+            else:
+                next_channels = 1
+                target_h, target_w = self.input_shape
+
+            # Calculate output padding
+            output_padding_h = target_h - ((current_h - 1)*2 - 2*1 + 3)
+            output_padding_w = target_w - ((current_w - 1)*2 - 2*1 + 3)
+            output_padding = output_padding_h  # Assuming square images
+
+            # Create transpose conv layer
+            conv_t = nn.ConvTranspose2d(
+                current_channels, next_channels,
+                kernel_size=3, stride=2, padding=1,
+                output_padding=output_padding
+            )
+            layers.append(conv_t)
+
+            # Add activations and dropout
+            if layer_idx != self.n_encoder_layers - 1:
+                layers.append(nn.LeakyReLU(True))
+                layers.append(nn.Dropout2d(dropout))
+            else:
+                layers.append(nn.Sigmoid())
+
+            current_channels = next_channels
+            current_h, current_w = target_h, target_w
+
+        return nn.Sequential(*layers)
 
     def forward(self, x):
-        # Assuming input shape: (batch_size, sequence_length, 1, 100, 100) for 100x100 images
-        batch_size, _, _ = x.size()
+        batch_size, h, w = x.size()
+        x = x.view(batch_size, 1, h, w)
 
-        # Encode each time step separately
-        x = x.view(batch_size, 1, *shape)  # Combine batch and sequence dimensions
+        # Encode
         x = self.encoder(x)
-
-        x = self.flatten(x)
-
+        x = x.view(batch_size, -1)
         x = self.fc_enc(x)
 
-        x = self.fc_dec(x)
-
-        x = x.view(batch_size, 128, 13, 13)
-
         # Decode
-        x = self.decoder(x)  # Output: (batch_size, 1, 100, 100)
-
-        x = x.view(batch_size, *shape)  # Split batch and sequence dimensions
-
-        return x
-
-    def decode(self, x):
-        (
-            batch_size,
-            _,
-        ) = x.size()
         x = self.fc_dec(x)
-        x = x.view(batch_size, 128, 13, 13)
+        x = x.view(batch_size, *self.encoder_shapes[-1])
         x = self.decoder(x)
-        x = x.view(batch_size, *shape)
 
+        # Reshape back to original format
+        x = x.view(batch_size, *self.input_shape)
         return x
 
     def encode(self, x):
-        batch_size, _, _ = x.size()
-
-        # Encode each time step separately
-        x = x.view(batch_size, 1, *shape)
+        batch_size, h, w = x.size()
+        x = x.view(batch_size, 1, h, w)
         x = self.encoder(x)
-        x = self.flatten(x)
-        x = self.fc_enc(x)
+        x = x.view(batch_size, -1)
+        return self.fc_enc(x).view(batch_size, -1)
 
-        return x
+    def decode(self, z):
+        batch_size, latent_dim = z.size()
+        z = z.view(batch_size, latent_dim)
+        z = self.fc_dec(z)
+        z = z.view(batch_size, *self.encoder_shapes[-1])
+        return self.decoder(z).view(batch_size, *self.input_shape)
 
 
-class LitConvAutoEncoder(L.LightningModule):
-    def __init__(self, autoencoder, lr=1e-3, weight_decay=1e-5, step_size=10, gamma=0.1):
-        super().__init__()
-        self.autoencoder = autoencoder
+import lightning.pytorch as pl
+
+
+class LitConvAutoEncoder(pl.LightningModule):
+    def __init__(self, latent_dim, n_encoder_layers, channels_base, lr=1e-3, weight_decay=1e-5, dropout=0.5):
+        super(LitConvAutoEncoder, self).__init__()
+        self.save_hyperparameters()
+        self.model = ConvAutoEncoder(
+            input_shape=(200, 200),
+            latent_dim=latent_dim,
+            n_encoder_layers=n_encoder_layers,
+            channels_base=channels_base,
+            dropout=dropout
+        )
         self.lr = lr
         self.weight_decay = weight_decay
-        self.step_size = step_size
-        self.gamma = gamma
+        self.loss_fn = torch.nn.MSELoss()
 
-        self.save_hyperparameters(ignore=["autoencoder"])
+    def forward(self, x):
+        return self.model(x)
 
     def training_step(self, batch, batch_idx):
-        x, _ = batch
-        x_hat = self.autoencoder(x)
-        loss = nn.functional.mse_loss(x_hat, x)
+        x, y = batch
+        output = self(x)
+        loss = self.loss_fn(output, y)
         self.log("train_loss", loss, prog_bar=True)
         return loss
 
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3, weight_decay=1e-5)
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
-        return [optimizer], [lr_scheduler]
-
     def validation_step(self, batch, batch_idx):
-        x, _ = batch
-        x_hat = self.autoencoder(x)
-        loss = nn.functional.mse_loss(x_hat, x)
-        self.log("val_loss", loss, prog_bar=True)  # Optional: Log per batch if needed
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        x, _ = batch
-        x_hat = self.autoencoder(x)
-        loss = nn.functional.mse_loss(x_hat, x)
-        self.log("test_loss", loss, prog_bar=True)
-
-    def forward(self, x):
-        return self.autoencoder(x)
+        x, y = batch
+        output = self(x)
+        loss = self.loss_fn(output, y)
+        self.log("val_loss", loss, prog_bar=True)
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        lr_sched = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+        return [optimizer], [lr_sched]
+        #return optimizer
 
 
 class EncoderRNN(nn.Module):

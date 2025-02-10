@@ -80,3 +80,34 @@ class SequenceDatasetMultiFidelity(Dataset):
         output_coarse_seq = torch.tensor(coarse_output_seq, dtype=torch.float32)
 
         return (input_seq, coarse_input_seq), (output_seq, output_coarse_seq)
+
+class SequenceDatasetNeuralODE(Dataset):
+    def __init__(
+        self, data, winds, output_len, n_samples=200, n_simulations=50
+    ):
+        """
+        data: A 2D array of shape (num_timesteps, num_features) where
+              num_features is 20 in your case.
+        input_len: The length of the input sequence (e.g., 10).
+        output_len: The length of the output sequence (e.g., 15).
+        """
+        self.data = data
+        self.output_len = output_len
+        self.n_samples = n_samples
+        self.n_simulations = n_simulations
+        self.winds = winds
+
+    def __len__(self):
+        return (self.n_samples - self.output_len) * self.n_simulations
+
+    def __getitem__(self, idx):
+        # the idx is the index from which we calculate the time step and the simulation number
+        sim_num = idx // (self.n_samples - self.output_len)
+        t = idx % (self.n_samples - self.output_len)
+
+        x = self.data[sim_num, t : t + self.output_len]
+        wind_data = self.winds[sim_num]
+        wind_data = np.tile(wind_data, (x.shape[0], 1))
+        x = np.concatenate((x, wind_data), axis=1)
+        x = torch.tensor(x, dtype=torch.float32)
+        return x, x

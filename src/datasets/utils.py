@@ -121,8 +121,13 @@ def load_multi_fidelity_dataset_manual_coarsed(
     coarse_data = np.load(coarse_data_dir)
 
     burning_data = data["burning_data"]
+    coarse_burning_data = np.zeros_like(burning_data)
     if real_coarse_data:
-        coarse_burning_data = coarse_data["burning_data"]
+        cbd = coarse_data["burning_data"]
+        for i in range(cbd.shape[0]):
+            for j in range(cbd.shape[1]):
+                upscaled = upscale_map(cbd[i, j], 8)
+                coarse_burning_data[i, j] = upscaled
     else:
         coarse_burning_data = coarse_data["coarse_data"]
     if slice_time_steps:
@@ -229,11 +234,10 @@ def load_multi_fidelity_dataset_manual_coarsed(
     )
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle)
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=shuffle)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=shuffle)
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     return train_dataloader, val_dataloader, test_dataloader
-
 
 def load_autoencoder_data(
     data_dir: Path,
@@ -271,9 +275,9 @@ def load_autoencoder_data(
 
     torch.manual_seed(seed)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle)
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=shuffle)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=shuffle)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=7, persistent_workers=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=7, persistent_workers=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=7, persistent_workers=True)
 
     return train_dataloader, val_dataloader, test_dataloader
 
